@@ -24,16 +24,29 @@ static int loongson3_pci_config_access(unsigned char access_type,
 	int function = PCI_FUNC(devfn);
 	int reg = where & ~3;
 
-	addr = (busnum << 16) | (device << 11) | (function << 8) | reg;
-	if (busnum == 0) {
-		if (device > 31)
-			return PCIBIOS_DEVICE_NOT_FOUND;
-		addrp = (void *)(TO_UNCAC(HT1LO_PCICFG_BASE) | (addr & 0xffff));
-		type = 0;
+	if (where < 256) { /* standard config */
+		addr = (busnum << 16) | (device << 11) | (function << 8) | reg;
+		if (busnum == 0) {
+			if (device > 31)
+				return PCIBIOS_DEVICE_NOT_FOUND;
+			addrp = (void *)(TO_UNCAC(HT1LO_PCICFG_BASE) | (addr & 0xffff));
+			type = 0;
+		} else {
+			addrp = (void *)(TO_UNCAC(HT1LO_PCICFG_BASE_TP1) | (addr));
+			type = 0x10000;
+		}
+	} else {  /* extended config */
+		struct pci_dev *rootdev;
 
-	} else {
-		addrp = (void *)(TO_UNCAC(HT1LO_PCICFG_BASE_TP1) | (addr));
-		type = 0x10000;
+		rootdev = pci_get_bus_and_slot(0, 0);
+		if (!rootdev)
+			return PCIBIOS_DEVICE_NOT_FOUND;
+
+		addr = pci_resource_start(rootdev, 3);
+		if (!addr)
+			return PCIBIOS_DEVICE_NOT_FOUND;
+
+		addrp = (void *)TO_UNCAC(addr | busnum << 20 | device << 15 | function << 12 | reg);
 	}
 
 	if (access_type == PCI_ACCESS_WRITE)
