@@ -5,3 +5,19 @@ config DRM_RADEON_USERPTR
 	help
 	  This option selects CONFIG_MMU_NOTIFIER if it isn't already
 	  selected to enabled full userptr support.
+
+config DRM_RADEON_DISABLE_SI
+	bool "Disable RADEON SI support by default"
+	depends on DRM_RADEON && DRM_AMDGPU_SI
+	default y
+	help
+	  This option will disable radeon support for SI so
+		SI support will provide by amdgpu.
+
+config DRM_RADEON_DISABLE_CIK
+	bool "Disable RADEON SI support by default"
+	depends on DRM_RADEON && DRM_AMDGPU_CIK
+	default y 
+	help
+	  This option will disable radeon support for CIK so
+		CIK support will provide by amdgpu.
