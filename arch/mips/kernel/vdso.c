@@ -106,7 +106,8 @@ static unsigned long vdso_base(void)
 	base = STACK_TOP + PAGE_SIZE;
 
 	if (current->flags & PF_RANDOMIZE) {
-		base += get_random_int() & (VDSO_RANDOMIZE_SIZE - 1);
+		base += get_random_int() & (VDSO_RANDOMIZE_SIZE - SZ_64K 
+- 1);
 		base = PAGE_ALIGN(base);
 	}
 
