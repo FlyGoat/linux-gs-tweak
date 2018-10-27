@@ -21,10 +21,14 @@
 #include <asm/time.h>
 #include <asm/bootinfo.h>
 #include <asm/dma-coherence.h>
+#include <asm/mipsregs.h>
 #include <loongson.h>
 #include <boot_param.h>
 #include <loongson-pch.h>
 #include <workarounds.h>
+
+int ls3bopen8cores = false;
+int isls3b1500g = false;
 
 u32 cpu_clock_freq;
 EXPORT_SYMBOL(cpu_clock_freq);
@@ -152,16 +156,44 @@ void __init prom_init_env(void)
 		loongson_freqctrl[3] = 0x900060001fe001d0;
 		loongson_sysconf.ht_control_base = 0x90001EFDFB000000;
 		loongson_sysconf.workarounds = WORKAROUND_CPUHOTPLUG;
+		if(ecpu->reserved_cores_mask == 0xFF11 || ecpu->reserved_cores_mask == 0xFF01 ) {
+			pr_info("Loongson 3B1500 open8cores support by Jiaxun Yang <jiaxun.yang@flygoat.com>\n");
+			pr_info("Please visit https://wiki.godson.ac.cn for further informaton\n");
+			pr_info("Do have faith in what you're doing\n");
+			if(ecpu->cpu_startup_core_id == 1 && get_ebase_cpunum() == 0){
+				ls3bopen8cores = true;
+				pr_info("Bootloader passed bootcore: %d, Real bootcore: %d\n", ecpu->cpu_startup_core_id, get_ebase_cpunum());
+				pr_info("Bootloader passed reserved core mask: %x\n",ecpu->reserved_cores_mask);
+				 asm volatile(
+					"li	%0, 0xbfe001a8\n\t"	/* This register is read-only on 3B1500G but R/W on pervious reversions */
+					"li	$t0, 0x5a5a5a5a\n\t"
+					"sw	$t0, 0(%0)\n\t"
+					"lw	%0, 0(%0)\n\t"
+					"subu	%0, %0, $t0\n\t"
+					: "=r" (isls3b1500g)
+					:
+					: "$t0");
+
+			pr_info("Your CPU %s LS3B1500G\n", isls3b1500g?"is":"is not");
+		} else {
+			pr_info("Your bootloader doesn't support open8cores\n");
+			}
+		}
 		break;
 	default:
 		loongson_sysconf.cores_per_node = 1;
 		loongson_sysconf.cores_per_package = 1;
 		loongson_chipcfg[0] = 0x900000001fe00180;
 	}
-
+	if (ls3bopen8cores) {
+	loongson_sysconf.nr_cpus = 8;
+	loongson_sysconf.boot_cpu_id = 0;
+	loongson_sysconf.reserved_cpus_mask = 0xFF00;
+	} else {
 	loongson_sysconf.nr_cpus = ecpu->nr_cpus;
 	loongson_sysconf.boot_cpu_id = ecpu->cpu_startup_core_id;
 	loongson_sysconf.reserved_cpus_mask = ecpu->reserved_cores_mask;
+	}
 #ifdef CONFIG_KEXEC
 	loongson_sysconf.boot_cpu_id = get_ebase_cpunum();
 	for (i = 0; i < loongson_sysconf.boot_cpu_id; i++)
@@ -186,7 +218,18 @@ void __init prom_init_env(void)
 	if (loongson_sysconf.dma_mask_bits < 32 ||
 		loongson_sysconf.dma_mask_bits > 64)
 		loongson_sysconf.dma_mask_bits = 32;
+	
+	if(ls3bopen8cores){
+		if(isls3b1500g){
+			hw_coherentio = 1;
+			pr_info("Cached DMA on LS3B1500G\n");
+		} else {
+			hw_coherentio = 0;
+			pr_info("Unached DMA on old LS3B1500 due to hardware errata\n");
+		}
+	} else	{
 	hw_coherentio = !eirq_source->dma_noncoherent;
+	}
 	pr_info("BIOS configured I/O coherency: %s\n", hw_coherentio?"ON":"OFF");
 
 	if (strstr(eboard->name,"2H")) {

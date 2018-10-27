@@ -17,9 +17,19 @@
 #include <asm/i8259.h>
 #include <asm/mipsregs.h>
 #include <asm/bootinfo.h>
+#include <asm/dma-coherence.h>
 
 #include <loongson.h>
 #include <mc146818rtc.h>
+
+#define HT_uncache_enable_reg0	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0xF0)
+#define HT_uncache_base_reg0	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0xF4)
+#define HT_uncache_enable_reg1	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0xF8)
+#define HT_uncache_base_reg1	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0xFC)
+#define HT_uncache_enable_reg2	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0x168)
+#define HT_uncache_base_reg2	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0x16C)
+#define HT_uncache_enable_reg3	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0x170)
+#define HT_uncache_base_reg3	*(volatile unsigned int *)(loongson_sysconf.ht_control_base + 0x174)
 
 static unsigned int __maybe_unused cached_master_mask;	/* i8259A */
 static unsigned int __maybe_unused cached_slave_mask;
@@ -219,6 +229,54 @@ static int loongson_pm_enter(suspend_state_t state)
 		cmos_write64(0x0, 0x40);  /* clear pc in cmos */
 		cmos_write64(0x0, 0x48);  /* clear sp in cmos */
 		pm_set_resume_via_firmware();
+		if (!hw_coherentio) {
+			/* set HT-access uncache */
+			switch (loongson_sysconf.cputype) {
+			case Legacy_3A:
+			case Loongson_3A:
+				HT_uncache_enable_reg0	= 0xc0000000; //Low 256M
+				HT_uncache_base_reg0	= 0x0080fff0;
+				HT_uncache_enable_reg1	= 0xc0000000; //Node 0
+				HT_uncache_base_reg1	= 0x0000e000;
+				HT_uncache_enable_reg2	= 0xc0100000; //Node 1
+				HT_uncache_base_reg2	= 0x2000e000;
+				HT_uncache_enable_reg3	= 0xc0200000; //Node 2/3
+				HT_uncache_base_reg3	= 0x4000c000;
+				writeq(0x0000202000000000, (void *)0x900000003ff02708);
+				writeq(0xffffffe000000000, (void *)0x900000003ff02748);
+				writeq(0x0000300000000086, (void *)0x900000003ff02788);
+				break;
+			case Legacy_3B:
+			case Loongson_3B:
+				HT_uncache_enable_reg0	= 0xc0000000;
+				HT_uncache_base_reg0	= 0x0080fff0;
+				HT_uncache_enable_reg1	= 0xc0000000;
+				HT_uncache_base_reg1	= 0x00008000;
+				break;
+			default:
+				break;
+			}
+		} else {
+			/* set HT-access cache */
+			switch (loongson_sysconf.cputype) {
+			case Legacy_3A:
+			case Loongson_3A:
+				HT_uncache_enable_reg0	= 0x0;
+				HT_uncache_enable_reg1	= 0x0;
+				HT_uncache_enable_reg2	= 0x0;
+				HT_uncache_enable_reg3	= 0x0;
+				break;
+			case Legacy_3B:
+			case Loongson_3B:
+				HT_uncache_enable_reg0	= 0x0;
+				HT_uncache_enable_reg1	= 0x0;
+				break;
+			default:
+				break;
+			}
+			printk("SET HT_DMA CACHED\n");
+		}
+		__sync();
 #else
 		loongson_suspend_enter();
 #endif
