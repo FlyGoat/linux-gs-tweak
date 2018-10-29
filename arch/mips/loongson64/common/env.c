@@ -158,25 +158,35 @@ void __init prom_init_env(void)
 		loongson_sysconf.workarounds = WORKAROUND_CPUHOTPLUG;
 		if(ecpu->reserved_cores_mask == 0xFF11 || ecpu->reserved_cores_mask == 0xFF01 ) {
 			pr_info("Loongson 3B1500 open8cores support by Jiaxun Yang <jiaxun.yang@flygoat.com>\n");
-			pr_info("Please visit https://wiki.godson.ac.cn for further informaton\n");
+			pr_info("Please visit https://wiki.godson.ac.cn for further information\n");
 			pr_info("Do have faith in what you're doing\n");
 			if(ecpu->cpu_startup_core_id == 1 && get_ebase_cpunum() == 0){
 				ls3bopen8cores = true;
-				pr_info("Bootloader passed bootcore: %d, Real bootcore: %d\n", ecpu->cpu_startup_core_id, get_ebase_cpunum());
-				pr_info("Bootloader passed reserved core mask: %x\n",ecpu->reserved_cores_mask);
+				pr_info("LS3Bopen8cores: Bootloader passed bootcore: %d, Real bootcore: %d\n", ecpu->cpu_startup_core_id, get_ebase_cpunum());
+				pr_info("LS3Bopen8cores: Bootloader passed reserved core mask: %x\n",ecpu->reserved_cores_mask);
 				 asm volatile(
-					"li	%0, 0xbfe001a8\n\t"	/* This register is read-only on 3B1500G but R/W on pervious reversions */
-					"li	$t0, 0x5a5a5a5a\n\t"
-					"sw	$t0, 0(%0)\n\t"
-					"lw	%0, 0(%0)\n\t"
-					"subu	%0, %0, $t0\n\t"
+					".set	noreorder\n\t"
+					"li	$t2, 0xbfe001a8\n\t"	/* This register is read-only on 3B1500G but R/W on pervious reversions */
+					"lw	$t1, 0($t2)\n\t"	/* Backup the original value to $t1 */
+					"li	$t0, 0x5a5a5a5a\n\t"	/* Load a value to $t0 */
+					"sw	$t0, 0($t2)\n\t"	/* Write the value in $t0 to the address in %0 */
+					"lw	%0, 0($t2)\n\t"	/* Load the value from the address in %0 back to %0 */
+					"beq	%0, $t0, isnot\n\t"	/* If %0 == t0, branch to isnot */
+					"nop\n\t"	/* Delay slot: Nothing to do */
+					"b	out\n\t"	/* Branch to the end, set return in delay solt */
+					"ori	%0, 0xffff\n\t"	/* Delay slot: Low 16bit in %0 || 0xffff so return won't be zero
+								Why not li? Pesudo instruction in delay slot is not allowed */
+					"isnot:\n\t"
+					"sw	$t1, 0($t2)\n\t"	/* Restore the value to the register */
+					"movz	%0, $zero, $zero\n\t"	/* Set return value to zero */
+					"out:\n\t"
 					: "=r" (isls3b1500g)
 					:
-					: "$t0");
+					: "$t0", "$t1", "$t2");
 
-			pr_info("Your CPU %s LS3B1500G\n", isls3b1500g?"is":"is not");
+			pr_info("LS3Bopen8cores: Your CPU %s LS3B1500G\n", isls3b1500g?"is":"is not");
 		} else {
-			pr_info("Your bootloader doesn't support open8cores\n");
+			pr_info("LS3Bopen8cores: Your bootloader doesn't support open8cores\n");
 			}
 		}
 		break;
@@ -222,13 +232,12 @@ void __init prom_init_env(void)
 	if(ls3bopen8cores){
 		if(isls3b1500g){
 			hw_coherentio = 1;
-			pr_info("Cached DMA on LS3B1500G\n");
+			pr_info("LS3Bopen8cores: Cached I/O DMA on LS3B1500G\n");
 		} else {
 			hw_coherentio = 0;
-			pr_info("Unached DMA on old LS3B1500 due to hardware errata\n");
-		}
-	} else	{
-	hw_coherentio = !eirq_source->dma_noncoherent;
+			pr_info("LS3Bopen8cores: Unached I/O DMA on old LS3B1500 due to hardware errata\n");
+		} } else {
+		hw_coherentio = !eirq_source->dma_noncoherent;
 	}
 	pr_info("BIOS configured I/O coherency: %s\n", hw_coherentio?"ON":"OFF");
 
